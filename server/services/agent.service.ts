@@ -1,51 +1,28 @@
 import { createAgent } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
+import { MemorySaver } from '@langchain/langgraph'
 import type { BaseMessageLike } from '@langchain/core/messages'
 import { demoTools } from '../tools/demo.tools'
 
 export interface AgentChatInput {
   message: string
   /** 多轮对话时传入历史消息 */
+  threadId?: string
   history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
 
 export interface AgentChatResult {
   reply: string
+  threadId: string
   messages: unknown[]
 }
 
-function createChatModel() {
-  const config = useRuntimeConfig()
-  const apiKey = config.openaiApiKey
-
-  if (!apiKey) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Missing NUXT_OPENAI_API_KEY in runtimeConfig',
-    })
-  }
-
-  return new ChatOpenAI({
-    apiKey,
-    model: config.openaiModel || 'gpt-4o-mini',
-    temperature: 0.2,
-    ...(config.openaiBaseUrl
-      ? { configuration: { baseURL: config.openaiBaseUrl } }
-      : {}),
-  })
-}
-
-function createAppAgent() {
-  return createAgent({
-    model: createChatModel(),
-    tools: demoTools,
-    systemPrompt:
-      'You are a helpful AI agent. Use tools when they improve the answer. Reply in the same language as the user.',
-  })
-}
-
 function buildMessages(input: AgentChatInput): BaseMessageLike[] {
-  const history = input.history ?? []
+  const history = input.history ?? [];
+  // 有 threadId 时由 checkpointer 恢复历史，只传本轮用户消息
+  if (input.threadId && !input.history?.length) {
+    return [{ role: 'user', content: input.message }]
+  }
   return [
     ...history.map((item) => ({
       role: item.role,
@@ -77,30 +54,76 @@ function extractReply(messages: Array<{ content?: unknown }>): string {
   }
   return ''
 }
+function resolveThreadId(threadId?: string) {
+  return threadId?.trim() || crypto.randomUUID()
+}
 
 /** 一次性调用：适合非流式对话 */
 export async function runAgentChat(input: AgentChatInput): Promise<AgentChatResult> {
-  const agent = createAppAgent()
+  const threadId = resolveThreadId(input.threadId)
+  const agent = createNewAgent()
   const result = await agent.invoke({
-    messages: buildMessages(input),
+    messages: buildMessages({...input, threadId}),
+  }, {
+    configurable: { thread_id: threadId }
   })
 
   const messages = (result.messages ?? []) as Array<{ content?: unknown }>
   return {
     reply: extractReply(messages),
+    threadId,
     messages,
   }
 }
 
 /** 流式调用：按事件向外抛，由 API 层写成 SSE */
 export async function* streamAgentChat(input: AgentChatInput) {
-  const agent = createAppAgent()
+  const threadId = resolveThreadId(input.threadId)
+  const agent = createNewAgent()
+
   const stream = await agent.stream(
-    { messages: buildMessages(input) },
-    { streamMode: 'messages' },
+    { messages: buildMessages({ ...input, threadId }) },
+    {
+      streamMode: 'messages',
+      configurable: { thread_id: threadId },
+    },
   )
 
   for await (const chunk of stream) {
-    yield chunk
+    yield { threadId, chunk }
   }
+}
+
+const chatMemory = new MemorySaver();
+
+const createChatModel = () => {
+  const config = useRuntimeConfig()
+  const apiKey = config.openaiApiKey
+
+  if (!apiKey) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Missing NUXT_OPENAI_API_KEY in runtimeConfig',
+    })
+  }
+
+  return new ChatOpenAI({
+    apiKey,
+    model: config.openaiModel || 'qwen-plus',
+    temperature: 0.2,
+    ...(config.openaiBaseUrl
+      ? { configuration: { baseURL: config.openaiBaseUrl } }
+      : {}),
+  })
+}
+
+const createNewAgent = () => {
+  return createAgent({
+    name: 'new-agent',
+    description: 'new-agent',
+    model: createChatModel(),
+    tools: demoTools,
+    systemPrompt: `你是一个有帮助的 AI 助手，请用用户的语言回答。`,
+    checkpointer: chatMemory,
+  })
 }
