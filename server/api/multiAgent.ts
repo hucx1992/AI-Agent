@@ -6,8 +6,8 @@ interface ChatBody {
     history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
 export default defineEventHandler(async (event: ChatBody) => {
-    const body = await readBody<ChatBody>(event)
-    console.log('---------------------', body);
+    const body:any = await readBody<ChatBody>(event)
+    console.log('---------------------', body, event);
     if (!body.message) {
         setResponseStatus(event, 400)
         return {

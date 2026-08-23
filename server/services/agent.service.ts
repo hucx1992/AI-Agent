@@ -1,8 +1,9 @@
 import { createAgent } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
-import { MemorySaver } from '@langchain/langgraph'
+import { MemorySaver, StateSchema } from '@langchain/langgraph'
 import type { BaseMessageLike } from '@langchain/core/messages'
 import { demoTools } from '../tools/demo.tools'
+import { weartherPrompt } from '../prompts/wearther'
 
 export interface AgentChatInput {
   message: string
@@ -18,6 +19,7 @@ export interface AgentChatResult {
 }
 
 function buildMessages(input: AgentChatInput): BaseMessageLike[] {
+  console.log('buildMessages____________: ', input);
   const history = input.history ?? [];
   // 有 threadId 时由 checkpointer 恢复历史，只传本轮用户消息
   if (input.threadId && !input.history?.length) {
@@ -42,10 +44,7 @@ function extractReply(messages: Array<{ content?: unknown }>): string {
       const text = content
         .map((block) => {
           if (typeof block === 'string') return block
-          if (block && typeof block === 'object' && 'text' in block) {
-            return String((block as { text?: string }).text ?? '')
-          }
-          return ''
+          return block.text ??''
         })
         .join('')
         .trim()
@@ -90,6 +89,7 @@ export async function* streamAgentChat(input: AgentChatInput) {
   )
 
   for await (const chunk of stream) {
+    console.log('流式调用：', chunk);
     yield { threadId, chunk }
   }
 }
@@ -117,13 +117,25 @@ const createChatModel = () => {
   })
 }
 
+const stateSchema: any = {
+  messages: {
+    type: 'array',
+    items: {
+      type: 'object',
+    },
+  },
+}
+
+
 const createNewAgent = () => {
   return createAgent({
     name: 'new-agent',
     description: 'new-agent',
     model: createChatModel(),
     tools: demoTools,
-    systemPrompt: `你是一个有帮助的 AI 助手，请用用户的语言回答。`,
+    systemPrompt: `你是一个有帮助的 AI 助手，${weartherPrompt}`,
+    // prompts: [weartherPrompt],
     checkpointer: chatMemory,
+    stateSchema,
   })
 }

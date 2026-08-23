@@ -27,7 +27,7 @@ function getText(item: unknown): string {
 }
 
 export default defineEventHandler(async (event: ChatBody) => {
-    const body = await readBody<ChatBody>(event)
+    const body:any = await readBody<ChatBody>(event)
     if (!body.message) {
         setResponseStatus(event, 400)
         return {
