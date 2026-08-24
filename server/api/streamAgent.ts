@@ -1,7 +1,7 @@
 import { streamAgentChat } from "../services/agent.service";
 
 interface ChatBody {
-    message?: string
+    message: string
     threadId?: string
     history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
@@ -25,41 +25,42 @@ function getText(item: unknown): string {
     const content = typed.content
     return typeof content === 'string' ? content : ''
 }
-
-export default defineEventHandler(async (event: ChatBody) => {
-    const body:any = await readBody<ChatBody>(event)
+export default defineEventHandler(async (event: any) => {
+    const body:ChatBody = await readBody(event);
     if (!body.message) {
-        setResponseStatus(event, 400)
+        setResponseStatus(event, 400);
         return {
             code: 400,
             message: 'message is required',
             data: null
         }
     }
-    const eventStream = createEventStream(event)
+    const eventStream = createEventStream(event);
+
+    let threadId = body.threadId;
     void (async () => {
         try {
-            // const result = await streamAgentChat(body);
             for await (const chunk of streamAgentChat(body)) {
-                const text = getText(chunk)
-                if (!text) continue
+                threadId = chunk.threadId;
+                const text = getText(chunk);
+                if (!text) continue;
+
                 await eventStream.push(JSON.stringify({
                     type: 'chunk',
-                    text
-                }))
+                    text,
+                    threadId,
+                }));
             }
-            await eventStream.push(JSON.stringify({ type: 'done' }))
+            await eventStream.push(JSON.stringify({ type: 'done', threadId }));
         } catch (error) {
-
-            console.error('[agent/stream]', error)
             await eventStream.push(JSON.stringify({
                 code: 500,
                 type: 'error',
                 message: error instanceof Error ? error.message : 'Agent stream failed',
-            }))
+            }));
         } finally {
-            await eventStream.close()
+            await eventStream.close();
         }
-    })()
-    return eventStream.send()
+    })();
+    return eventStream.send();
 });

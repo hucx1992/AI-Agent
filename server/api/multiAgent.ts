@@ -7,7 +7,6 @@ interface ChatBody {
 }
 export default defineEventHandler(async (event: ChatBody) => {
     const body:any = await readBody<ChatBody>(event)
-    console.log('---------------------', body, event);
     if (!body.message) {
         setResponseStatus(event, 400)
         return {

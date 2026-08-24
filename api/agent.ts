@@ -36,64 +36,50 @@ export function multiAgent(body: AgentChatRequest) {
  * 流式：读 SSE，拼 text，收到 done 结束。
  * 只有页面调用 streamAgent() 时才需要；只用 multiAgent 可以删这段。
  */
-export async function streamAgent(
-  body: AgentChatRequest,
-  onChunk?: (text: string, threadId?: string) => void,
-): Promise<StreamAgentResult> {
-  const response = await fetch('/api/streamAgent', {
+export const streamAgent = async (body: {message: string, threadId?: string}, onChunk?: (text: string, threadId?: string) => void) => {
+  const response:any = await fetch('/api/streamAgent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
-  })
+  });
+  const reader = response.body.getReader();
 
-  if (!response.ok || !response.body) {
-    throw new Error(`stream failed: ${response.status}`)
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let reply = ''
-  let threadId = body.threadId
-
+  let buffer = '';
+  let reply = '';
+  let threadId = body.threadId;
   while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
+    const { value, done } = await reader.read();
+    if (done) break;
+    const decoder = new TextDecoder();
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
+    buffer = lines.pop() || '';
 
     for (const line of lines) {
       const text = line.trim()
-      if (!text.startsWith('data:')) continue
+      if (!text.startsWith('data:')) continue;
 
       const raw = text.slice(5).trim()
-      if (!raw) continue
+      if (!raw) continue;
 
-      const event = JSON.parse(raw) as {
-        type: string
-        threadId?: string
-        text?: string
-        message?: string
-      }
-
-      if (event.threadId) threadId = event.threadId
+      const event = JSON.parse(raw);
+      
+      if (event.threadId) threadId = event.threadId;
 
       if (event.type === 'chunk' && event.text) {
-        reply += event.text
-        onChunk?.(reply, threadId)
+        reply += JSON.parse(raw)?.text || '';
+        onChunk?.(reply, threadId);
+      } else if (event.type === 'done') {
+        return {
+          reply,
+          threadId,
+        }
       }
-
-      if (event.type === 'done') {
-        return { reply, threadId }
-      }
-
       if (event.type === 'error') {
         throw new Error(event.message || 'stream error')
       }
     }
+    
   }
-
   return { reply, threadId }
 }

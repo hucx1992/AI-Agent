@@ -8,15 +8,16 @@
     <button @click="sendMessage">
       Send
     </button>
-    <div class="reply">
-      {{ reply }}
+    <div class="chat-list">
+      <p v-for="item in chatList" :key="item.id">{{ item }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { streamAgent } from '@/api/agent'
+import { streamAgent } from '@/api/agent';
 
+const chatList = ref<any[]>([]);
 const message = ref('')
 const reply = ref('')
 const threadId = ref<string>()
@@ -26,29 +27,31 @@ const sendMessage = async () => {
   const text = message.value.trim()
   if (!text || loading.value) return
 
-  loading.value = true
-  reply.value = ''
-  message.value = ''
+  loading.value = true;
+  reply.value = '';
+  message.value = '';
 
   try {
     // 用流式：会走 api/agent.ts 里的 streamAgent
+    chatList.value.push({ id: Date.now(), content: text, role: 'user' });
     const result = await streamAgent(
       { message: text, threadId: threadId.value },
       (partial, id) => {
-        reply.value = partial
-        if (id) threadId.value = id
-        console.log('---------------------result--1------', partial);
+        console.log('------------------')
+        reply.value = partial;
+        if (threadId) threadId.value = id;
       },
     )
-    console.log('---------------------result---2-----', result);
-    reply.value = result.reply
-    threadId.value = result.threadId
+    reply.value = result.reply;
+    threadId.value = result.threadId;
   }
   catch (error) {
     reply.value = error instanceof Error ? error.message : '请求失败'
   }
   finally {
-    loading.value = false
+    loading.value = false;
+    chatList.value.push(reply.value);
+    reply.value = '';
   }
 }
 </script>

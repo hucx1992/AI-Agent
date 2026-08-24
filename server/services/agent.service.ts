@@ -2,8 +2,9 @@ import { createAgent } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
 import { MemorySaver, StateSchema } from '@langchain/langgraph'
 import type { BaseMessageLike } from '@langchain/core/messages'
-import { demoTools } from '../tools/demo.tools'
+import { getWeatherTool } from '../tools/wearther'
 import { weartherPrompt } from '../prompts/wearther'
+import { z } from 'zod'
 
 export interface AgentChatInput {
   message: string
@@ -57,6 +58,48 @@ function resolveThreadId(threadId?: string) {
   return threadId?.trim() || crypto.randomUUID()
 }
 
+const chatMemory = new MemorySaver();
+
+const stateSchema = new StateSchema({
+  userId: z.string().describe('用户ID'),
+  userName: z.string().describe('用户姓名'),
+});
+
+const createChatModel = () => {
+  const config = useRuntimeConfig()
+  const apiKey = config.openaiApiKey
+
+  if (!apiKey) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Missing NUXT_OPENAI_API_KEY in runtimeConfig',
+    })
+  }
+
+  return new ChatOpenAI({
+    apiKey,
+    model: config.openaiModel || 'qwen-plus',
+    temperature: 0.2,
+    ...(config.openaiBaseUrl
+      ? { configuration: { baseURL: config.openaiBaseUrl } }
+      : {}),
+  })
+}
+
+
+const createNewAgent = () => {
+  return createAgent({
+    name: 'new-agent',
+    description: 'new-agent',
+    model: createChatModel(),
+    tools: [getWeatherTool],
+    systemPrompt: '你是一个有帮助的 AI 助手。只有当用户询问天气时，必须调用 get_weather 工具查询。',
+    checkpointer: chatMemory,   // 持久化
+    stateSchema,
+  })
+}
+
+
 /** 一次性调用：适合非流式对话 */
 export async function runAgentChat(input: AgentChatInput): Promise<AgentChatResult> {
   const threadId = resolveThreadId(input.threadId)
@@ -89,53 +132,6 @@ export async function* streamAgentChat(input: AgentChatInput) {
   )
 
   for await (const chunk of stream) {
-    console.log('流式调用：', chunk);
     yield { threadId, chunk }
   }
-}
-
-const chatMemory = new MemorySaver();
-
-const createChatModel = () => {
-  const config = useRuntimeConfig()
-  const apiKey = config.openaiApiKey
-
-  if (!apiKey) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'Missing NUXT_OPENAI_API_KEY in runtimeConfig',
-    })
-  }
-
-  return new ChatOpenAI({
-    apiKey,
-    model: config.openaiModel || 'qwen-plus',
-    temperature: 0.2,
-    ...(config.openaiBaseUrl
-      ? { configuration: { baseURL: config.openaiBaseUrl } }
-      : {}),
-  })
-}
-
-const stateSchema: any = {
-  messages: {
-    type: 'array',
-    items: {
-      type: 'object',
-    },
-  },
-}
-
-
-const createNewAgent = () => {
-  return createAgent({
-    name: 'new-agent',
-    description: 'new-agent',
-    model: createChatModel(),
-    tools: demoTools,
-    systemPrompt: `你是一个有帮助的 AI 助手，${weartherPrompt}`,
-    // prompts: [weartherPrompt],
-    checkpointer: chatMemory,
-    stateSchema,
-  })
 }
