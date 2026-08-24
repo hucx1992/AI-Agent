@@ -1,12 +1,12 @@
 import { runAgentChat } from "../services/agent.service";
 
 interface ChatBody {
-    message?: string
+    message: string
     threadId?: string
     history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>
 }
-export default defineEventHandler(async (event: ChatBody) => {
-    const body:any = await readBody<ChatBody>(event)
+export default defineEventHandler(async (event: any) => {
+    const body:ChatBody = await readBody<ChatBody>(event)
     if (!body.message) {
         setResponseStatus(event, 400)
         return {
