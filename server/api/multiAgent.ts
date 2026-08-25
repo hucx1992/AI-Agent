@@ -23,7 +23,7 @@ export default defineEventHandler(async (event: any) => {
             data: result,
             message: 'success',
         };
-    } catch (error) {
+    } catch (error: any) {
         setResponseStatus(event, 500)
         return {
             code: 500,
