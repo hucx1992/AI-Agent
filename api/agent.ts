@@ -83,3 +83,17 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
   }
   return { reply, threadId }
 }
+
+export const addKnowLedge = async (text: string) => {
+  return $fetch('/api/knowLedge/add', {
+    method: 'POST',
+    body: { text },
+  })
+}
+
+export const queryKnowLedge = async (text: string) => {
+  return $fetch('/api/knowLedge/query', {
+    method: 'POST',
+    body: { text },
+  })
+}

@@ -14,6 +14,7 @@
       <button @click="sendMessage">
         Send
       </button>
+      <button @click="toKnowledge">to Knowledge</button>
     </div>
   </div>
 </template>
@@ -57,6 +58,10 @@ const sendMessage = async () => {
     loading.value = false;
     reply.value = { text: '', id: undefined };
   }
+}
+
+const toKnowledge = () => {
+  navigateTo('/knowledge')
 }
 </script>
 

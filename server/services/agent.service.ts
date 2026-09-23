@@ -3,8 +3,9 @@ import { ChatOpenAI } from '@langchain/openai'
 import { MemorySaver, StateSchema } from '@langchain/langgraph'
 import type { BaseMessageLike } from '@langchain/core/messages'
 import { getWeatherTool } from '../tools/wearther'
-import { weartherPrompt } from '../prompts/wearther'
 import { z } from 'zod'
+import { knowledgeSearchTool } from '../tools/knowLedge'
+import { searchSimilar } from './knowLedge.service'
 
 export interface AgentChatInput {
   message: string
@@ -86,28 +87,33 @@ const createChatModel = () => {
   })
 }
 
-
 const createNewAgent = () => {
   return createAgent({
     name: 'new-agent',
     description: 'new-agent',
     model: createChatModel(),
-    tools: [getWeatherTool],
-    systemPrompt: '你是一个有帮助的 AI 助手。只有当用户询问天气时，必须调用 get_weather 工具查询。',
-    checkpointer: chatMemory,   // 持久化
+    tools: [getWeatherTool, knowledgeSearchTool],
+    systemPrompt: [
+      '你是一个有帮助的 AI 助手。',
+      '规则：',
+      '1. 仅当用户明确询问天气时，才调用 get_weather。',
+      '2. 用户消息里若已包含【知识库检索结果】，必须优先依据这些内容回答，不要忽略。',
+      '3. 若仍需补充检索，可再调用 knowledge_search。',
+      '4. 不要把个人心情/状态问题当成天气问题。',
+    ].join('\n'),
+    checkpointer: chatMemory,
     stateSchema,
   })
 }
-
 
 /** 一次性调用：适合非流式对话 */
 export async function runAgentChat(input: AgentChatInput): Promise<AgentChatResult> {
   const threadId = resolveThreadId(input.threadId)
   const agent = createNewAgent()
   const result = await agent.invoke({
-    messages: buildMessages({...input, threadId}),
+    messages: await buildMessages({ ...input, threadId }),
   }, {
-    configurable: { thread_id: threadId }
+    configurable: { thread_id: threadId },
   })
 
   const messages = (result.messages ?? []) as Array<{ content?: unknown }>
@@ -124,7 +130,7 @@ export async function* streamAgentChat(input: AgentChatInput) {
   const agent = createNewAgent()
 
   const stream = await agent.stream(
-    { messages: buildMessages({ ...input, threadId }) },
+    { messages: await buildMessages({ ...input, threadId }) },
     {
       streamMode: 'messages',
       configurable: { thread_id: threadId },
