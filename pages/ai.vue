@@ -2,7 +2,13 @@
   <div class="agent">
     <div class="chat-list">
       <p :class="item.role === 'user' ? 'user-msg' : 'assistant-msg'" v-for="item in chatList" :key="item.id">
-        <span>{{ item.text || '...' }}</span>
+        <span>
+          {{ item.text || '...' }}
+          <small v-if="item.usage" class="token-usage">
+            Tokens：{{ item.usage.totalTokens }}
+            （输入 {{ item.usage.inputTokens }} / 输出 {{ item.usage.outputTokens }}）
+          </small>
+        </span>
       </p>
     </div>
     <div class="input-bar">
@@ -20,11 +26,17 @@
 </template>
 
 <script setup lang="ts">
-import { streamAgent } from '@/api/agent';
+import { streamAgent, type TokenUsage } from '@/api/agent';
 
-const chatList = ref<any[]>([]);
+interface ChatMessage {
+  id: number | string | undefined
+  text: string
+  role: 'user' | 'assistant'
+  usage?: TokenUsage
+}
+
+const chatList = ref<ChatMessage[]>([]);
 const message = ref('')
-const reply = ref<{ text: string, id: string | undefined }>({ text: '', id: undefined });
 const threadId = ref<string>()
 const loading = ref(false);
 
@@ -34,29 +46,29 @@ const sendMessage = async () => {
 
   loading.value = true;
   message.value = '';
-  const assistantMsg = reactive({ text: '', id: undefined as string | undefined });
-  reply.value = assistantMsg;
+  const assistantMsg = reactive<ChatMessage>({
+    text: '',
+    id: undefined,
+    role: 'assistant',
+  });
 
   try {
-    chatList.value.push({ id: Date.now(), text, role: 'user' });
-    streamAgent(
+    chatList.value.push({ id: Date.now(), text, role: 'user' }, assistantMsg);
+    const result = await streamAgent(
       { message: text, threadId: threadId.value },
       (partial, id) => {
-        console.log('------------------', partial, id);
         assistantMsg.text = partial;
         assistantMsg.id = id;
-        if (threadId) threadId.value = id;
+        if (id) threadId.value = id;
       },
     )
-    chatList.value.push(assistantMsg);
-    // reply.value = result.reply;
+    assistantMsg.usage = result.usage ?? undefined;
   }
   catch (error) {
-    reply.value = { text: error instanceof Error ? error.message : '请求失败', id: undefined };
+    assistantMsg.text = error instanceof Error ? error.message : '请求失败';
   }
   finally {
     loading.value = false;
-    reply.value = { text: '', id: undefined };
   }
 }
 
@@ -123,6 +135,12 @@ const toKnowledge = () => {
       padding: 10px;
       margin-bottom: 10px;
     }
+  }
+  .token-usage {
+    display: block;
+    margin-top: 6px;
+    color: #999;
+    font-size: 12px;
   }
   .user-msg {
     justify-content: flex-end;

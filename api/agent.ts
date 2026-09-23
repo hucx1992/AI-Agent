@@ -21,6 +21,13 @@ export interface AgentChatResponse {
 export interface StreamAgentResult {
   reply: string
   threadId?: string
+  usage: TokenUsage | null
+}
+
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
 }
 
 /** 非流式：POST /api/multiAgent，一次返回完整结果 */
@@ -47,6 +54,7 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
   let buffer = '';
   let reply = '';
   let threadId = body.threadId;
+  let usage: TokenUsage | null = null;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -70,9 +78,11 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
         reply += JSON.parse(raw)?.text || '';
         onChunk?.(reply, threadId);
       } else if (event.type === 'done') {
+        usage = event.usage ?? usage;
         return {
           reply,
           threadId,
+          usage,
         }
       }
       if (event.type === 'error') {
@@ -81,7 +91,7 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
     }
     
   }
-  return { reply, threadId }
+  return { reply, threadId, usage }
 }
 
 export const addKnowLedge = async (text: string) => {

@@ -1,4 +1,4 @@
-import { createAgent } from 'langchain'
+import { createAgent, summarizationMiddleware } from 'langchain'
 import { ChatOpenAI } from '@langchain/openai'
 import { MemorySaver, StateSchema } from '@langchain/langgraph'
 import type { BaseMessageLike } from '@langchain/core/messages'
@@ -6,6 +6,12 @@ import { getWeatherTool } from '../tools/wearther'
 import { z } from 'zod'
 import { knowledgeSearchTool } from '../tools/knowLedge'
 import { searchSimilar } from './knowLedge.service'
+
+const AGENT_CONTEXT_MAX_TOKENS = 10000
+const CONTEXT_COMPRESSION_TRIGGER_TOKENS = Math.floor(
+  AGENT_CONTEXT_MAX_TOKENS * 0.8,
+)
+const CONTEXT_TOKENS_TO_KEEP = Math.floor(AGENT_CONTEXT_MAX_TOKENS * 0.2)
 
 export interface AgentChatInput {
   message: string
@@ -21,7 +27,6 @@ export interface AgentChatResult {
 }
 
 function buildMessages(input: AgentChatInput): BaseMessageLike[] {
-  console.log('buildMessages____________: ', input);
   const history = input.history ?? [];
   // 有 threadId 时由 checkpointer 恢复历史，只传本轮用户消息
   if (input.threadId && !input.history?.length) {
@@ -81,6 +86,7 @@ const createChatModel = () => {
     apiKey,
     model: config.openaiModel || 'qwen-plus',
     temperature: 0.2,
+    streamUsage: true,
     ...(config.openaiBaseUrl
       ? { configuration: { baseURL: config.openaiBaseUrl } }
       : {}),
@@ -88,11 +94,23 @@ const createChatModel = () => {
 }
 
 const createNewAgent = () => {
+  const model = createChatModel()
+
   return createAgent({
     name: 'new-agent',
     description: 'new-agent',
-    model: createChatModel(),
+    model,
     tools: [getWeatherTool, knowledgeSearchTool],
+    middleware: [
+      summarizationMiddleware({
+        model,
+        trigger: { tokens: CONTEXT_COMPRESSION_TRIGGER_TOKENS },
+        keep: { tokens: CONTEXT_TOKENS_TO_KEEP },
+        trimTokensToSummarize:
+          CONTEXT_COMPRESSION_TRIGGER_TOKENS - CONTEXT_TOKENS_TO_KEEP,
+        summaryPrefix: '以下是截至目前的对话摘要：',
+      }),
+    ],
     systemPrompt: [
       '你是一个有帮助的 AI 助手。',
       '规则：',
