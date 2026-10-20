@@ -35,11 +35,11 @@ async function buildMessages(
   const history = input.history ?? [];
   let content = input.message
   if (intent?.intent === 'knowledge') {
-    const hits = await searchSimilar(intent.query || input.message)
+    const hits = await searchSimilar(intent.query || input.message, { topK: 3 })
     if (hits.length) {
       content = [
-        '【知识库检索结果】',
-        ...hits.map((doc, i) => `${i + 1}. ${doc.pageContent}`),
+        '【知识库检索结果】（已按相关度打分，取 topK）',
+        ...hits.map((hit) => `${hit.rank}. [相关度 ${hit.score}] ${hit.content}`),
         '',
         `用户问题：${input.message}`,
       ].join('\n')

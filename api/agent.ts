@@ -121,9 +121,9 @@ export const addKnowLedge = async (text: string) => {
   })
 }
 
-export const queryKnowLedge = async (text: string) => {
+export const queryKnowLedge = async (text: string, topK = 3) => {
   return $fetch('/api/knowLedge/query', {
     method: 'POST',
-    body: { text },
+    body: { text, topK },
   })
 }

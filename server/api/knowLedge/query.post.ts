@@ -1,7 +1,7 @@
 import { searchSimilar } from '../../services/knowLedge.service'
 
 export default defineEventHandler(async (event) => {
-  const body = await readBody<{ text?: string }>(event)
+  const body = await readBody<{ text?: string; topK?: number; minScore?: number }>(event)
   const text = body?.text?.trim()
   if (!text) {
     setResponseStatus(event, 400)
@@ -9,7 +9,10 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const result = await searchSimilar(text)
+    const result = await searchSimilar(text, {
+      topK: body.topK,
+      minScore: body.minScore,
+    })
     return { code: 1000, message: 'success', data: result }
   }
   catch (error) {
