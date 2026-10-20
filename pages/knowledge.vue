@@ -1,6 +1,6 @@
 <template>
   <div class="addKnowLedge">
-    <input type="text" v-model="text" placeholder="请输入知识库内容">
+    <textarea type="text" v-model="text" placeholder="请输入知识库内容"></textarea>
     <button @click="addKnowLedgeFn">添加</button>
     <button @click="queryKnowLedgeFn">查询</button>
     {{ queryList }}
