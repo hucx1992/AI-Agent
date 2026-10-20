@@ -94,6 +94,14 @@ export default defineEventHandler(async (event: any) => {
         try {
             for await (const chunk of streamAgentChat(body)) {
                 threadId = chunk.threadId;
+                if (chunk.intent && !chunk.chunk) {
+                    await eventStream.push(JSON.stringify({
+                        type: 'intent',
+                        intent: chunk.intent,
+                        threadId,
+                    }))
+                    continue
+                }
                 const chunkUsage = getTokenUsage(chunk)
                 if (chunkUsage) {
                     hasTokenUsage = true

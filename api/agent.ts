@@ -18,10 +18,18 @@ export interface AgentChatResponse {
   } | null
 }
 
+export interface IntentInfo {
+  intent: 'weather' | 'knowledge' | 'chitchat'
+  city?: string
+  query?: string
+  reason: string
+}
+
 export interface StreamAgentResult {
   reply: string
   threadId?: string
   usage: TokenUsage | null
+  intent?: IntentInfo
 }
 
 export interface TokenUsage {
@@ -43,7 +51,11 @@ export function multiAgent(body: AgentChatRequest) {
  * 流式：读 SSE，拼 text，收到 done 结束。
  * 只有页面调用 streamAgent() 时才需要；只用 multiAgent 可以删这段。
  */
-export const streamAgent = async (body: {message: string, threadId?: string}, onChunk?: (text: string, threadId?: string) => void) => {
+export const streamAgent = async (
+  body: {message: string, threadId?: string},
+  onChunk?: (text: string, threadId?: string) => void,
+  onIntent?: (intent: IntentInfo, threadId?: string) => void,
+) => {
   const response:any = await fetch('/api/streamAgent', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -55,6 +67,7 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
   let reply = '';
   let threadId = body.threadId;
   let usage: TokenUsage | null = null;
+  let intent: IntentInfo | undefined;
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -74,6 +87,12 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
       
       if (event.threadId) threadId = event.threadId;
 
+      if (event.type === 'intent' && event.intent) {
+        intent = event.intent
+        onIntent?.(event.intent, threadId)
+        continue
+      }
+
       if (event.type === 'chunk' && event.text) {
         reply += JSON.parse(raw)?.text || '';
         onChunk?.(reply, threadId);
@@ -83,6 +102,7 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
           reply,
           threadId,
           usage,
+          intent,
         }
       }
       if (event.type === 'error') {
@@ -91,7 +111,7 @@ export const streamAgent = async (body: {message: string, threadId?: string}, on
     }
     
   }
-  return { reply, threadId, usage }
+  return { reply, threadId, usage, intent }
 }
 
 export const addKnowLedge = async (text: string) => {

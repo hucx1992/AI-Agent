@@ -3,6 +3,7 @@
     <div class="chat-list">
       <p :class="item.role === 'user' ? 'user-msg' : 'assistant-msg'" v-for="item in chatList" :key="item.id">
         <span>
+          <small v-if="item.intentLabel" class="intent-tag">{{ item.intentLabel }}</small>
           {{ item.text || '...' }}
           <small v-if="item.usage" class="token-usage">
             Tokens：{{ item.usage.totalTokens }}
@@ -26,13 +27,20 @@
 </template>
 
 <script setup lang="ts">
-import { streamAgent, type TokenUsage } from '@/api/agent';
+import { streamAgent, type IntentInfo, type TokenUsage } from '@/api/agent';
+
+const INTENT_LABEL: Record<IntentInfo['intent'], string> = {
+  weather: '查天气',
+  knowledge: '查知识库',
+  chitchat: '闲聊',
+}
 
 interface ChatMessage {
   id: number | string | undefined
   text: string
   role: 'user' | 'assistant'
   usage?: TokenUsage
+  intentLabel?: string
 }
 
 const chatList = ref<ChatMessage[]>([]);
@@ -61,8 +69,15 @@ const sendMessage = async () => {
         assistantMsg.id = id;
         if (id) threadId.value = id;
       },
+      (intent, id) => {
+        assistantMsg.intentLabel = INTENT_LABEL[intent.intent]
+        if (id) threadId.value = id
+      },
     )
     assistantMsg.usage = result.usage ?? undefined;
+    if (result.intent) {
+      assistantMsg.intentLabel = INTENT_LABEL[result.intent.intent]
+    }
   }
   catch (error) {
     assistantMsg.text = error instanceof Error ? error.message : '请求失败';
@@ -135,6 +150,16 @@ const toKnowledge = () => {
       padding: 10px;
       margin-bottom: 10px;
     }
+  }
+  .intent-tag {
+    display: inline-block;
+    margin-bottom: 6px;
+    margin-right: 6px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #111;
+    color: #fff;
+    font-size: 12px;
   }
   .token-usage {
     display: block;
